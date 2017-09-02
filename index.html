@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="http://d3js.org/d3.v4.min.js"></script>
+  <script src="https://d3js.org/topojson.v1.min.js"></script>
+  <style>
+
+.land {
+  fill: #ddd;
+}
+
+.country_borders {
+  fill: none;  
+  stroke: rgba(13, 46, 80, 0.7);
+}
+body {
+    background: rgba(13, 46, 80, 0.7) /* Green background with 30% opacity */
+}
+</style>
+</head>
+<body >
+<script type="text/javascript">
+
+var margin = 75,
+    width = 1400 - margin,
+    height = 600 - margin;
+
+var svg = d3.select("body")
+	        .append("svg")
+	        .attr("width", width + margin)
+	        .attr("height", height + margin)
+	        .append('g')
+	        .attr('class', 'map');
+
+
+var projection = d3.geoMercator()
+                   .scale(140)
+                   .translate([width / 2, height / 1.2]);
+
+var rScale = d3.scaleSqrt();
+
+var path = d3.geoPath().projection(projection);
+
+d3.queue()
+    .defer(d3.json, "geo.json")
+    .defer(d3.csv, "unhcr_2016.csv", formatCountry)
+    .await(ready);
+
+function ready(error, worldmap, countries) {
+  if (error) throw error;
+  svg.append("path")
+      .datum(topojson.feature(worldmap, worldmap.objects.land))
+      .attr("class", "land")
+      .attr("d", path);
+
+  svg.append("path")
+      .datum(topojson.mesh(worldmap, worldmap.objects.countries, function(a, b) { return a !== b; }))
+      .attr("class", "country_borders")
+      .attr("d", path);
+
+
+  function agg_year(leaves) {
+    var total = d3.sum(leaves, function(d) {
+        return +d['Total_Population'];
+    });
+
+    var coords = leaves.map(function(d) {
+        return projection([+d.long_dest, +d.lat_dest]);
+    });
+
+    var center_x = d3.mean(coords, function(d) {
+        return d[0];
+    });
+
+    var center_y = d3.mean(coords, function(d) {
+        return d[1];
+    });
+    return {
+      'population' : total,
+      'x' : center_x,
+      'y' : center_y
+    };
+  };//agg_year
+
+
+  var nested = d3.nest()
+                // .key(function(d) { return d['Year'];})
+                 .key(function(d) { return d['Destination'];})
+                 .rollup(agg_year)
+                 .entries(countries);
+
+  var attendance_max = d3.max(nested, function(d) {
+                return d.value['population'];
+            });
+
+  var radius = d3.scaleSqrt()
+                 .domain([0, attendance_max])
+                 .range([0, 15]);
+
+  svg.append('g')
+               .attr("class", "bubble")
+               .selectAll('circle')
+               .data(nested).enter()
+        .append('circle')
+        .attr('cx', function(d) {return d.value['x'];})
+        .attr('cy', function(d) {return d.value['y'];})
+        .attr('r', function (d){ return radius(d.value['population']); })
+        .attr('fill', 'rgb(247, 148, 32)')
+        .attr('stroke', 'black')
+        .attr('stroke-width', 0.7)
+        .attr('opacity', 0.7);
+/*
+  svg.append('g')
+      .attr("class", "bubble")
+      .selectAll("circle")
+      .data(nested)
+      .enter()
+      .append("circle")
+      .attr('cx', function(d) {return d.values['x'];})
+      .attr('cy', function(d) {return d.values['y'];})
+      .attr('r', 5)
+      .attr('fill', 'rgb(247, 148, 32)')
+      .attr('stroke', 'black')
+      .attr('stroke-width', 0.7)
+      .attr('opacity', 0.7);
+*/
+}//function ready(error, worldmap, countries) {
+
+function formatCountry(d) {
+  if (d.long_dest && d.lat_dest) {
+    d.long_origin = +d.long_origin;
+    d.lat_origin  = +d.lat_origin;
+    d.long_dest   = +d.long_dest;
+    d.lat_dest    = +d.lat_dest;
+   // d.arcs = {type: "MultiLineString", coordinates: []};
+    return d;
+  } else {
+    return null
+  }
+  
+}//formatCountry
+
+</script>
+</body>
+</html>
